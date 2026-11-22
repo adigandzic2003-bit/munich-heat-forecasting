@@ -1,0 +1,112 @@
+name: Morning research extensions (23 Nov 2026)
+on:
+  schedule:
+    # Scheduled entries are UTC; 23 November is CET (UTC+1) in Munich.
+    - cron: '5 8 23 11 *'    # 09:05 CET: EDA and climate quality tables
+    - cron: '15 9 23 11 *'   # 10:15 CET: heat episodes and yearly error audit
+    - cron: '20 10 23 11 *'  # 11:20 CET: additional regression experiments
+    - cron: '25 11 23 11 *'  # 12:25 CET: integrate, document and test
+  workflow_dispatch:
+    inputs:
+      until_stage:
+        description: 'Publish morning batch through this step (recovery if cron was skipped)'
+        type: choice
+        options: ['4', '5', '6', '7']
+        default: '7'
+permissions:
+  contents: write
+concurrency:
+  group: munich-heat-morning-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Publish actual tested modules in four incremental commits
+        env:
+          TRIGGER_CRON: ${{ github.event.schedule }}
+          MANUAL_STAGE: ${{ inputs.until_stage }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            until_stage="${MANUAL_STAGE:-7}"
+          else
+            # The November-only schedule is guarded to avoid running in 2027+.
+            if [[ "$(date -u +%Y-%m-%d)" != "2026-11-23" ]]; then
+              echo "Outside planned morning release date; nothing to publish."
+              exit 0
+            fi
+            case "$TRIGGER_CRON" in
+              '5 8 23 11 *') until_stage=4 ;;
+              '15 9 23 11 *') until_stage=5 ;;
+              '20 10 23 11 *') until_stage=6 ;;
+              '25 11 23 11 *') until_stage=7 ;;
+              *) echo "Unexpected cron value: $TRIGGER_CRON"; exit 1 ;;
+            esac
+          fi
+          if [[ ! -f src/heat_forecasting/pipeline.py ]]; then
+            echo "The overnight foundation is not published. Finish staged-release first."
+            exit 1
+          fi
+          if [[ ! -f .morning/source.tar.gz.b64 ]]; then
+            echo "Morning delivery has already completed or source bundle is missing."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          mkdir -p /tmp/heat-morning-source
+          base64 --decode .morning/source.tar.gz.b64 | tar -xz -C /tmp/heat-morning-source
+          for stage in $(seq 4 "$until_stage"); do
+            if [[ -f ".morning/stage${stage}.done" ]]; then
+              echo "Stage $stage already published."
+              continue
+            fi
+            case "$stage" in
+              4)
+                paths='src/heat_forecasting/eda.py tests/test_eda.py'
+                msg='feat(eda): explore DWD yearly temperature, coverage and hot-day patterns'
+                ;;
+              5)
+                paths='src/heat_forecasting/error_analysis.py tests/test_error_analysis.py'
+                msg='feat(evaluation): analyze heat episodes and held-out annual errors'
+                ;;
+              6)
+                paths='src/heat_forecasting/extra_models.py tests/test_extra_models.py'
+                msg='feat(models): add Ridge and histogram boosting with validation-only comparison'
+                ;;
+              7)
+                paths='src/heat_forecasting/reporting.py src/heat_forecasting/pipeline.py tests/test_morning_integration.py README.md docs/EXPERIMENT_PROTOCOL.md docs/OUTPUT_GUIDE.md'
+                msg='feat(report): integrate experiments, automated results and research protocol'
+                ;;
+            esac
+            for file in $paths; do
+              mkdir -p "$(dirname "$file")"
+              cp "/tmp/heat-morning-source/$file" "$file"
+            done
+            python -m pip install -q -e '.[test]'
+            if [[ "$stage" -eq 7 ]]; then
+              pytest -q
+              python -m heat_forecasting.pipeline --config configs/default.yaml --demo
+              # Once integrated, remove packaged source and stage markers.
+              rm -rf .morning
+            else
+              case "$stage" in
+                4) pytest -q tests/test_eda.py ;;
+                5) pytest -q tests/test_eda.py tests/test_error_analysis.py ;;
+                6) pytest -q tests/test_eda.py tests/test_error_analysis.py tests/test_extra_models.py ;;
+              esac
+              printf 'Published at %s UTC\n' "$(date -u +%FT%TZ)" > ".morning/stage${stage}.done"
+            fi
+            git add -A
+            git commit -m "$msg"
+            git push origin HEAD:main
+            echo "Published morning stage $stage."
+          done
