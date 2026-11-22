@@ -2,9 +2,9 @@ name: Overnight staged delivery (22-23 Nov 2026)
 on:
   schedule:
     # GitHub uses UTC; Germany is CET (UTC+1) on these dates.
-    - cron: '0 20 22 11 *'   # 22 Nov, 21:00 CET: acquisition and QA
-    - cron: '0 23 22 11 *'   # 23 Nov, 00:00 CET: features and models
-    - cron: '30 1 23 11 *'   # 23 Nov, 02:30 CET: evaluation and docs
+    - cron: '10 20 22 11 *'   # 22 Nov, 21:10 CET: acquisition and QA
+    - cron: '10 23 22 11 *'   # 23 Nov, 00:10 CET: features and models
+    - cron: '35 1 23 11 *'   # 23 Nov, 02:35 CET: evaluation and docs
   workflow_dispatch:
     inputs:
       until_stage:
@@ -39,9 +39,9 @@ jobs:
             until_stage="${MANUAL_STAGE:-3}"
           else
             case "$CRON" in
-              '0 20 22 11 *') until_stage=1 ;;
-              '0 23 22 11 *') until_stage=2 ;;
-              '30 1 23 11 *') until_stage=3 ;;
+              '10 20 22 11 *') until_stage=1 ;;
+              '10 23 22 11 *') until_stage=2 ;;
+              '35 1 23 11 *') until_stage=3 ;;
               *) echo 'Unknown or stale scheduled trigger'; exit 0 ;;
             esac
             if [[ "$(date -u +%Y-%m-%d)" != 2026-11-22 && "$(date -u +%Y-%m-%d)" != 2026-11-23 ]]; then
