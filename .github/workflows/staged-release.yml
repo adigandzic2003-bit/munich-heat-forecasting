@@ -68,7 +68,7 @@ jobs:
                 message='feat(ml): leakage-safe features, backtests, baselines and heat forecasting'
                 ;;
               3)
-                paths='src/heat_forecasting/evaluation.py src/heat_forecasting/visualization.py src/heat_forecasting/pipeline.py README.md scripts/run_demo.sh tests/test_end_to_end.py .github/workflows/ci.yml .github/workflows/real-dwd.yml'
+                paths='src/heat_forecasting/evaluation.py src/heat_forecasting/visualization.py src/heat_forecasting/pipeline.py README.md scripts/run_demo.sh tests/test_end_to_end.py'
                 message='feat(evaluation): complete forecasting pipeline, plots, report outputs and CI'
                 ;;
             esac
@@ -85,7 +85,6 @@ jobs:
               pytest -q
               python -m heat_forecasting.pipeline --config configs/default.yaml --demo
               rm -rf .delivery
-              rm -f .github/workflows/staged-release.yml
             fi
             if [[ "$stage" != 3 ]]; then
               printf 'Published by GitHub Actions at %s UTC\n' "$(date -u +%FT%TZ)" > ".delivery/stage${stage}.done"
