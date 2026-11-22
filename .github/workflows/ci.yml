@@ -22,7 +22,8 @@ jobs:
           cache: pip
       - run: python -m pip install -e '.[test]'
       - run: pytest -q
-      - name: Offline demo
+      - name: Offline demo (after final stage)
+        if: ${{ hashFiles('src/heat_forecasting/pipeline.py') != '' }}
         run: python -m heat_forecasting.pipeline --config configs/default.yaml --demo
       - uses: actions/upload-artifact@v4
         with:
