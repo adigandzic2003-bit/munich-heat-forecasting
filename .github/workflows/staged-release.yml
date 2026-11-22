@@ -1,0 +1,97 @@
+name: Overnight staged delivery (22-23 Nov 2026)
+on:
+  schedule:
+    # GitHub uses UTC; Germany is CET (UTC+1) on these dates.
+    - cron: '0 20 22 11 *'   # 22 Nov, 21:00 CET: acquisition and QA
+    - cron: '0 23 22 11 *'   # 23 Nov, 00:00 CET: features and models
+    - cron: '30 1 23 11 *'   # 23 Nov, 02:30 CET: evaluation and docs
+  workflow_dispatch:
+    inputs:
+      until_stage:
+        description: 'Publish stages through this number (recovery if schedule is delayed)'
+        type: choice
+        options: ['1', '2', '3']
+        default: '3'
+permissions:
+  contents: write
+concurrency:
+  group: munich-staged-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Unpack and publish verified stages
+        env:
+          CRON: ${{ github.event.schedule }}
+          MANUAL_STAGE: ${{ inputs.until_stage }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            until_stage="${MANUAL_STAGE:-3}"
+          else
+            case "$CRON" in
+              '0 20 22 11 *') until_stage=1 ;;
+              '0 23 22 11 *') until_stage=2 ;;
+              '30 1 23 11 *') until_stage=3 ;;
+              *) echo 'Unknown or stale scheduled trigger'; exit 0 ;;
+            esac
+            if [[ "$(date -u +%Y-%m-%d)" != 2026-11-22 && "$(date -u +%Y-%m-%d)" != 2026-11-23 ]]; then
+              echo 'Release is limited to the night of 22-23 November 2026.'
+              exit 0
+            fi
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          mkdir -p /tmp/heat-staged-source
+          base64 --decode .delivery/source.tar.gz.b64 | tar -xz -C /tmp/heat-staged-source
+          for stage in $(seq 1 "$until_stage"); do
+            if [[ -f ".delivery/stage${stage}.done" ]]; then
+              echo "Stage $stage already published"
+              continue
+            fi
+            case "$stage" in
+              1)
+                paths='.gitignore pyproject.toml requirements.txt configs/default.yaml data/README.md src/heat_forecasting/__init__.py src/heat_forecasting/config.py src/heat_forecasting/acquisition.py src/heat_forecasting/quality.py src/heat_forecasting/demo.py tests/test_acquisition.py tests/test_quality.py'
+                message='feat(data): import DWD station archives and validate daily observations'
+                ;;
+              2)
+                paths='src/heat_forecasting/features.py src/heat_forecasting/baselines.py src/heat_forecasting/models.py tests/test_features.py tests/test_models.py'
+                message='feat(ml): leakage-safe features, backtests, baselines and heat forecasting'
+                ;;
+              3)
+                paths='src/heat_forecasting/evaluation.py src/heat_forecasting/visualization.py src/heat_forecasting/pipeline.py README.md scripts/run_demo.sh tests/test_end_to_end.py .github/workflows/ci.yml .github/workflows/real-dwd.yml'
+                message='feat(evaluation): complete forecasting pipeline, plots, report outputs and CI'
+                ;;
+            esac
+            for file in $paths; do
+              mkdir -p "$(dirname "$file")"
+              cp "/tmp/heat-staged-source/$file" "$file"
+            done
+            python -m pip install -q -e '.[test]'
+            if [[ "$stage" == 1 ]]; then
+              pytest -q tests/test_acquisition.py tests/test_quality.py
+            elif [[ "$stage" == 2 ]]; then
+              pytest -q tests/test_acquisition.py tests/test_quality.py tests/test_features.py tests/test_models.py
+            else
+              pytest -q
+              python -m heat_forecasting.pipeline --config configs/default.yaml --demo
+              rm -rf .delivery
+              rm -f .github/workflows/staged-release.yml
+            fi
+            if [[ "$stage" != 3 ]]; then
+              printf 'Published by GitHub Actions at %s UTC\n' "$(date -u +%FT%TZ)" > ".delivery/stage${stage}.done"
+            fi
+            git add -A
+            git commit -m "$message"
+            git push origin HEAD:main
+            echo "Published stage $stage"
+          done
