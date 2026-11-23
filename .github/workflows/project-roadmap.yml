@@ -1,0 +1,193 @@
+name: Topic P4 project roadmap (23–27 Nov 2026)
+on:
+  schedule:
+    # GitHub cron in UTC. Germany is CET, UTC+1, for all November dates below.
+    - cron: '10 20 23 11 *'   # Monday 23 Nov 21:10 CET
+    - cron: '40 21 23 11 *'   # Monday 23 Nov 22:40 CET
+    - cron: '10 9 24 11 *'    # Tuesday 24 Nov 10:10 CET
+    - cron: '45 10 24 11 *'   # Tuesday 24 Nov 11:45 CET
+    - cron: '20 12 24 11 *'   # Tuesday 24 Nov 13:20 CET
+    - cron: '10 13 26 11 *'   # Thursday 26 Nov 14:10 CET
+    - cron: '20 14 26 11 *'   # Thursday 26 Nov 15:20 CET
+    - cron: '10 11 27 11 *'   # Friday 27 Nov 12:10 CET
+    - cron: '35 12 27 11 *'   # Friday 27 Nov 13:35 CET
+    - cron: '5 14 27 11 *'    # Friday 27 Nov 15:05 CET, final + DWD verification
+    - cron: '5 15 27 11 *'    # Friday 27 Nov 16:05 CET, final catch-up
+  workflow_dispatch:
+    inputs:
+      until_stage:
+        description: 'Catch up through this milestone (10 = full project and DWD run)'
+        required: true
+        type: choice
+        options: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']
+        default: '10'
+permissions:
+  contents: write
+concurrency:
+  group: munich-heat-roadmap-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Publish reviewed features in ordered commits
+        env:
+          SCHEDULED_CRON: ${{ github.event.schedule }}
+          MANUAL_STAGE: ${{ inputs.until_stage }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
+            until_stage="${MANUAL_STAGE:-10}"
+          else
+            # Never replay the calendar schedule in subsequent years.
+            if [[ "$(date -u +%Y)" != '2026' ]]; then
+              echo 'Historical roadmap; scheduled year is no longer current.'
+              exit 0
+            fi
+            case "$SCHEDULED_CRON" in
+              '10 20 23 11 *') until_stage=1 ;;
+              '40 21 23 11 *') until_stage=2 ;;
+              '10 9 24 11 *') until_stage=3 ;;
+              '45 10 24 11 *') until_stage=4 ;;
+              '20 12 24 11 *') until_stage=5 ;;
+              '10 13 26 11 *') until_stage=6 ;;
+              '20 14 26 11 *') until_stage=7 ;;
+              '10 11 27 11 *') until_stage=8 ;;
+              '35 12 27 11 *') until_stage=9 ;;
+              '5 14 27 11 *'|'5 15 27 11 *') until_stage=10 ;;
+              *) echo "Unrecognized scheduled trigger: $SCHEDULED_CRON"; exit 1 ;;
+            esac
+          fi
+          echo "Cumulative publication target: milestone $until_stage"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if [[ ! -f .roadmap/source.tar.gz.b64 ]]; then
+            if [[ "$until_stage" == 10 && -f src/heat_forecasting/final_report.py ]]; then
+              echo 'All project modules were published previously. Re-run empirical DWD check.'
+              python -m pip install -q -e '.[test]'
+              python -m heat_forecasting.pipeline --config configs/default.yaml
+              exit 0
+            fi
+            echo 'Release source not found; verify previous workflow runs.'
+            exit 1
+          fi
+          mkdir -p /tmp/munich-roadmap-source
+          base64 --decode .roadmap/source.tar.gz.b64 | tar -xz -C /tmp/munich-roadmap-source
+          source_dir=/tmp/munich-roadmap-source
+          install -d .roadmap/progress
+          # If GitHub delayed Monday's independent morning publication, catch it up
+          # before installing the new modules. Do not overwrite it if already present.
+          if [[ ! -f src/heat_forecasting/eda.py ]]; then
+            echo 'Promoting previously prepared morning analysis package first.'
+            paths='src/heat_forecasting/eda.py src/heat_forecasting/error_analysis.py src/heat_forecasting/extra_models.py src/heat_forecasting/reporting.py src/heat_forecasting/pipeline.py tests/test_eda.py tests/test_error_analysis.py tests/test_extra_models.py tests/test_morning_integration.py docs/EXPERIMENT_PROTOCOL.md docs/OUTPUT_GUIDE.md'
+            for file in $paths; do
+              mkdir -p "$(dirname "$file")"
+              cp "$source_dir/bridge/$file" "$file"
+            done
+            rm -rf .morning
+            python -m pip install -q -e '.[test]'
+            pytest -q
+            git add -A
+            git commit -m 'feat(analysis): publish previously prepared EDA and research extensions'
+            git push origin HEAD:main
+          fi
+          for stage in $(seq 1 "$until_stage"); do
+            if [[ -f ".roadmap/progress/${stage}.done" ]]; then
+              echo "Milestone $stage already published"
+              continue
+            fi
+            case "$stage" in
+              1)
+                paths='src/heat_forecasting/station_audit.py tests/test_station_audit.py'
+                message='feat(data): audit DWD station quality codes, missing runs and overlap'
+                test_scope='tests/test_station_audit.py'
+                ;;
+              2)
+                paths='src/heat_forecasting/forecast_demo.py tests/test_forecast_demo.py'
+                message='feat(forecast): show auditable issue time and daily information cutoff'
+                test_scope='tests/test_forecast_demo.py'
+                ;;
+              3)
+                paths='src/heat_forecasting/station_experiments.py tests/test_station_experiments.py'
+                message='feat(spatial): compare fixed-model holdout errors across Munich stations'
+                test_scope='tests/test_station_experiments.py'
+                ;;
+              4)
+                paths='src/heat_forecasting/decision_analysis.py tests/test_decision_analysis.py'
+                message='feat(alerts): report validation-only missed-event cost scenarios'
+                test_scope='tests/test_decision_analysis.py'
+                ;;
+              5)
+                paths='src/heat_forecasting/event_visuals.py tests/test_event_visuals.py'
+                message='feat(extremes): visualize observed heat episodes and missed alerts'
+                test_scope='tests/test_event_visuals.py'
+                ;;
+              6)
+                paths='src/heat_forecasting/reproducibility.py tests/test_reproducibility.py'
+                message='feat(research): hash input archives and persist trained model artifacts'
+                test_scope='tests/test_reproducibility.py'
+                ;;
+              7)
+                paths='src/heat_forecasting/research_validation.py tests/test_research_validation.py'
+                message='test(research): enforce temporal split and held-out design contracts'
+                test_scope='tests/test_research_validation.py'
+                ;;
+              8)
+                paths='src/heat_forecasting/final_report.py tests/test_final_report.py docs/PROJECT_ARCHITECTURE.md'
+                message='feat(report): generate station, cost and extreme-event evidence appendix'
+                test_scope='tests/test_final_report.py'
+                ;;
+              9)
+                paths='src/heat_forecasting/pipeline.py tests/test_final_integration.py pyproject.toml'
+                message='feat(pipeline): integrate station experiments, provenance and research audit'
+                test_scope=''
+                ;;
+              10)
+                paths='README.md docs/DWD_VALIDATION_CHECKLIST.md docs/RESULTS_INTERPRETATION.md docs/TEAM_HANDOFF.md docs/FINAL_CHECKLIST.md'
+                message='docs(p4): finalize reproducible project, evidence guide and team handoff'
+                test_scope=''
+                ;;
+            esac
+            for file in $paths; do
+              mkdir -p "$(dirname "$file")"
+              cp "$source_dir/files/$file" "$file"
+            done
+            python -m pip install -q -e '.[test]'
+            if [[ -n "$test_scope" ]]; then
+              pytest -q "$test_scope"
+            else
+              pytest -q
+              if [[ "$stage" == 9 ]]; then
+                python -m heat_forecasting.pipeline --config configs/default.yaml --demo
+              fi
+            fi
+            if [[ "$stage" == 10 ]]; then
+              rm -rf .roadmap
+            else
+              printf 'Finished on %s UTC\n' "$(date -u +%FT%TZ)" > ".roadmap/progress/${stage}.done"
+            fi
+            git add -A
+            git commit -m "$message"
+            git push origin HEAD:main
+            echo "Published milestone $stage."
+          done
+          if [[ "$until_stage" == 10 ]]; then
+            echo 'Running the first empirical DWD archive evaluation after publication.'
+            python -m heat_forecasting.pipeline --config configs/default.yaml
+          fi
+      - name: Upload completed empirical results (if generated)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p4-weather-research-${{ github.run_id }}
+          path: outputs/
+          if-no-files-found: ignore
+          retention-days: 21
