@@ -85,3 +85,15 @@ The station-identity and split manifests are reproducible and CSV/Parquet output
 ## Attribution and independent understanding
 
 Substantial coding assistance: OpenAI ChatGPT (GPT-6), 22 November 2026. DWD data are independently sourced from the German Weather Service. ML uses scikit-learn. The team should review and be able to defend every line in a live demonstration.
+
+## Morning extensions: EDA, heat episodes, supplementary models, reporting
+
+The second staged development block adds transparent analysis without changing the frozen primary study design:
+
+- `src/heat_forecasting/eda.py` describes the historical temperature series, gaps, and annual/monthly hot-day patterns.
+- `src/heat_forecasting/error_analysis.py` analyzes errors by held-out year and **consecutive calendar-day heat episodes**.
+- `src/heat_forecasting/extra_models.py` evaluates Ridge and histogram gradient boosting with **validation-only** selection. Primary random forest/ablations are unchanged.
+- `src/heat_forecasting/reporting.py` writes `outputs/research_report.md` from executed outputs, prominently identifying synthetic results.
+- `docs/EXPERIMENT_PROTOCOL.md` explains the preregistered research design; `docs/OUTPUT_GUIDE.md` shows how all outputs become Pandas DataFrames.
+
+The scheduled publication of these additions is independent of the actual DWD data retrieval. Perform a real-data evaluation and scientific review before submitting results.
