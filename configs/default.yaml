@@ -1,0 +1,42 @@
+project:
+  name: Munich heat-event forecasting
+  random_state: 42
+  # Retrospective demonstration: issue at 18:00 on origin day D.
+  # Assume daily DWD observations are finalized no earlier than day D+1;
+  # most recent allowed observation is therefore D-1.
+  issue_hour_local: 18
+  reporting_lag_days: 1
+  horizon_days: 1
+  hot_threshold_c: 30.0
+
+data:
+  source: https://opendata.dwd.de/climate_environment/CDC/observations_germany/climate/daily/kl/historical/
+  start_date: '1993-01-01'
+  end_date: '2025-12-31'
+  primary_station: '03379'
+  stations:
+    '03379': {name: München-Stadt, latitude: 48.1631, longitude: 11.5429, elevation_m: 515, role: target}
+    '01262': {name: München-Flughafen, latitude: 48.3477, longitude: 11.8133, elevation_m: 446, role: neighbor}
+    '05404': {name: Weihenstephan-Dürnast, latitude: 48.4025, longitude: 11.6946, elevation_m: 477, role: neighbor}
+  primary_lags: [1, 2, 3, 7, 14]
+  neighbor_lags: [1, 2, 3]
+  rolling_days: [3, 7, 14]
+
+split:
+  train_end: '2019-12-31'
+  validation_end: '2022-12-31'
+  test_end: '2025-12-31'
+  backtest:
+    - {train_end: '2015-12-31', validation_end: '2017-12-31'}
+    - {train_end: '2017-12-31', validation_end: '2019-12-31'}
+    - {train_end: '2019-12-31', validation_end: '2022-12-31'}
+
+model:
+  regressor_candidates:
+    - {n_estimators: 100, min_samples_leaf: 3, max_features: 0.8}
+    - {n_estimators: 160, min_samples_leaf: 5, max_features: 0.8}
+  classifier: {n_estimators: 150, min_samples_leaf: 5, max_features: 0.8}
+  false_alarm_cost: 1.0
+  missed_event_cost: 4.0
+  threshold_grid_step: 0.025
+  bootstrap_repetitions: 200
