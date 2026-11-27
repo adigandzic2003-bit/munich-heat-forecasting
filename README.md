@@ -63,7 +63,7 @@ The station-identity and split manifests are reproducible and CSV/Parquet output
 ## Project limitations and remaining validation
 
 1. Source archives can have gaps, station moves, differing urban/airport microclimates, changing sensors and quality flags. Review `quality_audit.csv`, original DWD station metadata and any provenance warnings before scientific conclusions.
-2. Target is a single urban site; neighboring stations are features, not additional prediction targets. The evaluation therefore reports per-season performance, not per-station test MAE. Extending to multiple target stations requires additional target-site experiments.
+2. The principal research question targets Munich-Stadt. Supplemental fixed-parameter experiments predict for all three target stations on their common held-out dates; these do not override the main Munich model or its frozen spatial ablation.
 3. Archive ZIPs may change; cache them and report the date and hashes for a final submission. The actual source retrieval and full real-data run require internet and should be performed before accepting empirical metrics.
 4. Three consecutive held-out years provide some temporal robustness, but uncertainty from three year-level blocks is imprecise. Report examples of entire heat episodes and consider a dedicated event-block analysis.
 5. An actual 18:00 forecast needs verification that D-1 daily summaries were published then. Without this, these are **retrospective forecasts**, not deployable predictions.
@@ -97,3 +97,23 @@ The second staged development block adds transparent analysis without changing t
 - `docs/EXPERIMENT_PROTOCOL.md` explains the preregistered research design; `docs/OUTPUT_GUIDE.md` shows how all outputs become Pandas DataFrames.
 
 The scheduled publication of these additions is independent of the actual DWD data retrieval. Perform a real-data evaluation and scientific review before submitting results.
+
+
+## Final research extensions (scheduled for 23–27 November 2026)
+
+- Detailed station quality, original DWD flag-code counts and pairwise overlap (`station_audit.py`).
+- One fully traceable retrospective forecast with the latest allowable observation (`forecast_demo.py`).
+- Independent held-out comparisons by station and season (`station_experiments.py`).
+- Validation-only missed-event versus false-alarm sensitivity (`decision_analysis.py`).
+- Heatwave visualizations and worst hot-day error cases (`event_visuals.py`).
+- ZIP/config hashes, fitted joblib models and software versions (`reproducibility.py`).
+- Chronological design contract and appendix reporting (`research_validation.py`, `final_report.py`).
+
+Output files are generated under `outputs/station_audit/`, `outputs/station_comparison/`,
+`outputs/decision_analysis/`, `outputs/models/`, and `outputs/research_report.md`.
+Read `docs/PROJECT_ARCHITECTURE.md`, `docs/DWD_VALIDATION_CHECKLIST.md` and
+`docs/TEAM_HANDOFF.md` for exact scopes and checks.
+
+A scheduled GitHub commit only confirms the **publication** of prepared files.
+It is not a claim that a human developer worked continuously during each interval.
+The official empirical results become available only when the real DWD run succeeds.
